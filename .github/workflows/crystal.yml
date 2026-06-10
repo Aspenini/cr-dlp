@@ -1,0 +1,51 @@
+name: Crystal Rewrite
+
+on:
+  push:
+    paths:
+      - "baseline/crystal/**"
+      - "devscripts/export_crystal_baseline.py"
+      - "devscripts/differential_crystal.py"
+      - "shard.yml"
+      - "spec/**"
+      - "src/**"
+      - ".github/workflows/crystal.yml"
+  pull_request:
+    paths:
+      - "baseline/crystal/**"
+      - "devscripts/export_crystal_baseline.py"
+      - "devscripts/differential_crystal.py"
+      - "shard.yml"
+      - "spec/**"
+      - "src/**"
+      - ".github/workflows/crystal.yml"
+
+permissions:
+  contents: read
+
+jobs:
+  test:
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, windows-latest, macos-latest]
+    runs-on: ${{ matrix.os }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - uses: crystal-lang/install-crystal@v1
+        with:
+          crystal: 1.20.0
+      - name: Verify formatting
+        run: crystal tool format --check src spec
+      - name: Run specs
+        run: crystal spec --error-trace
+      - name: Build preview executable
+        run: shards build --error-trace
+      - name: Verify generated baseline
+        run: |
+          python devscripts/export_crystal_baseline.py
+          git diff --exit-code -- baseline/crystal
+      - name: Run differential smoke test
+        run: python devscripts/differential_crystal.py

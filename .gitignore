@@ -112,6 +112,8 @@ test/testdata/thumbnails/foo\ %d\ bar/foo_%d.*
 /youtube-dl
 /youtube-dlc
 /yt-dlp
+/bin/
+/.crystal/
 yt-dlp.zip
 *.exe
 
