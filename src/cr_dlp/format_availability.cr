@@ -11,21 +11,19 @@ module CrDlp
 
       begin
         format_id = format["format_id"]?.try(&.as_s?) || "unknown"
-        STDERR.puts("[info] Testing format #{format_id}")
+        @client.info_log("[info] Testing format #{format_id}")
         working = test_format(resolve_format(format))
         @cache[key] = working
         unless working
           message = "Unable to download format #{format_id}. Skipping..."
-          prefix = @warning ? "WARNING: " : "[info] "
-          STDERR.puts("#{prefix}#{message}")
+          @warning ? @client.warning(message) : @client.info_log("[info] #{message}")
         end
         working
       rescue error
         @cache[key] = false
         format_id = format["format_id"]?.try(&.as_s?) || "unknown"
         message = "Unable to download format #{format_id}. Skipping... (#{error.message})"
-        prefix = @warning ? "WARNING: " : "[info] "
-        STDERR.puts("#{prefix}#{message}")
+        @warning ? @client.warning(message) : @client.info_log("[info] #{message}")
         false
       end
     end
@@ -40,7 +38,7 @@ module CrDlp
 
       url = format["url"]?.try(&.as_s?) ||
             raise DownloadError.new("Format is missing URL")
-      @client.request_director.probe(
+      @client.probe_request(
         Networking::Request.new(url, headers: request_headers(format)),
       )
       true
@@ -54,7 +52,7 @@ module CrDlp
                  raise DownloadError.new("HLS playlist contains no media fragments")
       headers = request_headers(format)
       headers["Range"] = fragment.byte_range.not_nil!.header if fragment.byte_range
-      @client.request_director.probe(Networking::Request.new(fragment.url, headers: headers))
+      @client.probe_request(Networking::Request.new(fragment.url, headers: headers))
       true
     end
 
@@ -62,7 +60,7 @@ module CrDlp
       url : String,
       headers : Hash(String, String),
     ) : Manifest::Hls::Playlist
-      response = @client.request_director.send(Networking::Request.new(url, headers: headers))
+      response = @client.send_request(Networking::Request.new(url, headers: headers))
       playlist = Manifest::Hls::Parser.parse(response.text, response.url)
       return playlist if playlist.media
       variant = playlist.best_variant ||
@@ -81,7 +79,7 @@ module CrDlp
       if byte_range = fragment["range"]?.try(&.as_s?)
         headers["Range"] = "bytes=#{byte_range}"
       end
-      @client.request_director.probe(Networking::Request.new(url, headers: headers))
+      @client.probe_request(Networking::Request.new(url, headers: headers))
       true
     end
 

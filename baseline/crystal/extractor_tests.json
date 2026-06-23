@@ -54853,10 +54853,10 @@
           "upload_date": "20201008",
           "uploader": "Firefox \ud83d\udd25",
           "uploader_id": "firefox",
-          "uploader_url": "https://nitter.it/firefox"
+          "uploader_url": "https://nitter.rawbit.ninja/firefox"
         },
         "name": "Nitter",
-        "url": "https://nitter.it/firefox/status/1314279897502629888#m"
+        "url": "https://nitter.rawbit.ninja/firefox/status/1314279897502629888#m"
       },
       {
         "info_dict": {
@@ -54878,13 +54878,13 @@
           "upload_date": "20200829",
           "uploader": "re:^Le *Doc",
           "uploader_id": "Le___Doc",
-          "uploader_url": "https://nitter.it/Le___Doc",
+          "uploader_url": "https://nitter.rawbit.ninja/Le___Doc",
           "view_count": {
             "$type": "int"
           }
         },
         "name": "Nitter",
-        "url": "https://nitter.it/Le___Doc/status/1299715685392756737#m"
+        "url": "https://nitter.rawbit.ninja/Le___Doc/status/1299715685392756737#m"
       },
       {
         "expected_warnings": [
@@ -54909,13 +54909,13 @@
           "upload_date": "20201027",
           "uploader": "Mozilla",
           "uploader_id": "mozilla",
-          "uploader_url": "https://nitter.it/mozilla",
+          "uploader_url": "https://nitter.rawbit.ninja/mozilla",
           "view_count": {
             "$type": "int"
           }
         },
         "name": "Nitter",
-        "url": "https://nitter.it/mozilla/status/1321147074491092994#m"
+        "url": "https://nitter.rawbit.ninja/mozilla/status/1321147074491092994#m"
       },
       {
         "info_dict": {
@@ -54937,13 +54937,13 @@
           "upload_date": "20210128",
           "uploader": "Firefox \ud83d\udd25",
           "uploader_id": "firefox",
-          "uploader_url": "https://nitter.it/firefox",
+          "uploader_url": "https://nitter.rawbit.ninja/firefox",
           "view_count": {
             "$type": "int"
           }
         },
         "name": "Nitter",
-        "url": "https://nitter.it/firefox/status/1354848277481414657#m"
+        "url": "https://nitter.rawbit.ninja/firefox/status/1354848277481414657#m"
       },
       {
         "expected_warnings": [
@@ -54968,7 +54968,7 @@
           "upload_date": "20230710",
           "uploader": "Your Typical Local Man",
           "uploader_id": "LocalBateman",
-          "uploader_url": "https://nitter.it/LocalBateman",
+          "uploader_url": "https://nitter.rawbit.ninja/LocalBateman",
           "view_count": {
             "$type": "int"
           }
@@ -54977,7 +54977,7 @@
         "params": {
           "skip_download": "m3u8"
         },
-        "url": "https://nitter.it/LocalBateman/status/1678455464038735895#m"
+        "url": "https://nitter.rawbit.ninja/LocalBateman/status/1678455464038735895#m"
       }
     ],
     "webpage_tests": []

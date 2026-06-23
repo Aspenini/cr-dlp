@@ -104,6 +104,25 @@ describe CrDlp::OutputTemplate do
     renderer.render("%(title)s", info).should eq("foo⧸bar⧹test")
   end
 
+  it "supports html, unicode, bytes, and explicit sanitization conversions" do
+    renderer = CrDlp::OutputTemplate.new
+    info = CrDlp::Info.new({
+      "title"    => JSON::Any.new("<tag>&'"),
+      "filesize" => JSON::Any.new(7_i64),
+    })
+
+    renderer.render("%(title)h", info, sanitize: false).should eq("&lt;tag&gt;&amp;&#39;")
+    renderer.render("%(title)U", info, sanitize: false).should eq("<tag>&'")
+    bytes = renderer.render("%(filesize)010B", info, sanitize: false).to_slice
+    bytes.should eq(Bytes[0, 0, 0, 0, 0, 0, 0, 0, 0, 55])
+    {% if flag?(:win32) %}
+      renderer.render("%(title)S", info, sanitize: false).should eq("＜tag＞&'")
+    {% else %}
+      renderer.render("%(title)S", info, sanitize: false).should eq("<tag>&'")
+    {% end %}
+    renderer.render("%(title)#S", info, sanitize: false).should eq("tag")
+  end
+
   it "supports NA configuration, restricted filenames, and filename trimming" do
     missing = CrDlp::OutputTemplate.new(na_placeholder: "none")
     missing.render("%(width)s-%(x|def)s", template_info, sanitize: false).should eq("none-def")

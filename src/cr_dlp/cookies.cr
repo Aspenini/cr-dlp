@@ -70,6 +70,14 @@ module CrDlp
       @mutex.synchronize { @cookies.size }
     end
 
+    def absorb(other : CookieJar)
+      other.cookies.each { |cookie| add(cookie) }
+    end
+
+    def cookies : Array(Cookie)
+      @mutex.synchronize { @cookies.dup }
+    end
+
     def add(cookie : Cookie)
       @mutex.synchronize do
         replace_cookie(cookie)

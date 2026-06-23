@@ -442,6 +442,112 @@ module CrDlp
       end
     end
 
+    class CurlImpersonateHandler < RequestHandler
+      getter impersonate : ImpersonateTarget
+      getter timeout : Time::Span
+      getter proxy : String?
+      getter cookie_jar : CookieJar?
+
+      def initialize(
+        @impersonate : ImpersonateTarget,
+        @timeout = 20.seconds,
+        @cookie_jar : CookieJar? = nil,
+        @proxy : String? = nil,
+      )
+      end
+
+      def key : String
+        "curl-impersonate"
+      end
+
+      def supports?(request : Request) : Bool
+        scheme = URI.parse(request.url).scheme
+        return false unless scheme == "http" || scheme == "https"
+        !resolved_entry.nil?
+      rescue URI::Error
+        false
+      end
+
+      def send(request : Request) : Response
+        entry = resolved_entry
+        raise UnsupportedRequest.new("No impersonate target available for #{@impersonate}") unless entry
+        execute_curl(entry.binary, request)
+      end
+
+      def download(
+        request : Request,
+        destination : IO,
+        progress : Proc(Int64, Int64?, Nil)? = nil,
+      ) : Response
+        response = send(request)
+        destination.write(response.body)
+        progress.try(&.call(response.body.size.to_i64, response.body.size.to_i64))
+        response
+      end
+
+      def probe(request : Request, max_bytes = 1024) : Response
+        headers = request.headers.dup
+        headers["Range"] = "bytes=0-#{Math.max(0, max_bytes - 1)}" unless headers.has_key?("Range")
+        send(Request.new(request.url, method: request.method, headers: headers, body: request.body))
+      end
+
+      private def resolved_entry : ImpersonateTargets::Entry?
+        @resolved_entry ||= ImpersonateTargets.resolve(@impersonate)
+      end
+
+      @resolved_entry : ImpersonateTargets::Entry?
+
+      private def execute_curl(binary : String, request : Request) : Response
+        args = ["-sS", "-X", request.method, "-D", "-", "-o", "-", "--max-time", @timeout.total_seconds.to_i.to_s]
+        proxy.try { |value| args.concat(["--proxy", value]) }
+        request.headers.each { |name, value| args.concat(["-H", "#{name}: #{value}"]) }
+        unless request.headers.has_key?("Cookie")
+          @cookie_jar.try(&.header_for(request.url)).try do |cookie|
+            args.concat(["-H", "Cookie: #{cookie}"])
+          end
+        end
+        args << request.url
+        stdout = IO::Memory.new
+        stderr = IO::Memory.new
+        status = Process.run(binary, args, output: stdout, error: stderr)
+        unless status.success?
+          message = stderr.to_s.strip
+          message = "curl impersonation failed with exit #{status.exit_code}" if message.empty?
+          raise RequestError.new(message)
+        end
+        parse_curl_response(request.url, stdout.to_slice)
+      rescue error : RequestError
+        raise error
+      rescue error
+        raise RequestError.new("Unable to impersonate request to #{request.url}: #{error.message}", cause: error)
+      end
+
+      private def parse_curl_response(url : String, data : Bytes) : Response
+        crlf = "\r\n\r\n".bytes
+        lf = "\n\n".bytes
+        separator = data.index(crlf) || data.index(lf) ||
+                    raise RequestError.new("Invalid impersonated HTTP response")
+        header_bytes = data[0, separator]
+        body_start = separator + (data[separator, crlf.size]? == crlf ? 4 : 2)
+        body = data[body_start..]
+        header_text = String.new(header_bytes)
+        lines = header_text.split('\n').map(&.chomp)
+        status_line = lines.first? || raise RequestError.new("Missing HTTP status line")
+        match = status_line.match(/\AHTTP\/\d+(?:\.\d+)?\s+(\d{3})(?:\s+(.*))?\z/) ||
+                raise RequestError.new("Invalid HTTP status line")
+        status = match[1].to_i
+        reason = match[2]?
+        headers = Hash(String, String).new
+        lines[1..]?.try &.each do |line|
+          next if line.empty?
+          name, value = line.split(':', 2, remove_empty: false)
+          next unless value
+          headers[name.strip] = value.strip
+        end
+        Response.new(url, status, headers, body.to_slice, reason)
+      end
+    end
+
     class RequestDirector
       getter handlers : Array(RequestHandler)
 

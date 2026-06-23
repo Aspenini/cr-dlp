@@ -1,0 +1,76 @@
+{
+  "status": "passed",
+  "results": [
+    {
+      "name": "python helper syntax",
+      "command": [
+        "C:\\Users\\bobfe\\AppData\\Local\\Programs\\Python\\Python310\\python.exe",
+        "-m",
+        "py_compile",
+        "devscripts/differential_crystal.py",
+        "devscripts/differential_jsinterp.py",
+        "devscripts/package_crystal_release.py",
+        "devscripts/extractor_fixture_report.py"
+      ],
+      "exit_code": 0,
+      "duration_seconds": 0.094
+    },
+    {
+      "name": "format check",
+      "command": [
+        "crystal",
+        "tool",
+        "format",
+        "--check",
+        "src",
+        "spec"
+      ],
+      "exit_code": 0,
+      "duration_seconds": 0.125
+    },
+    {
+      "name": "extractor fixture report",
+      "command": [
+        "C:\\Users\\bobfe\\AppData\\Local\\Programs\\Python\\Python310\\python.exe",
+        "devscripts/extractor_fixture_report.py",
+        "--require-implemented-tested",
+        "--output",
+        "artifacts/extractor-fixture-report.json"
+      ],
+      "exit_code": 0,
+      "duration_seconds": 0.156
+    },
+    {
+      "name": "crystal specs",
+      "command": [
+        "crystal",
+        "spec",
+        "--error-trace"
+      ],
+      "exit_code": 0,
+      "duration_seconds": 28.641
+    },
+    {
+      "name": "no-codegen build",
+      "command": [
+        "crystal",
+        "build",
+        "src/cr-dlp.cr",
+        "--no-codegen",
+        "--error-trace"
+      ],
+      "exit_code": 0,
+      "duration_seconds": 1.844
+    },
+    {
+      "name": "diff whitespace check",
+      "command": [
+        "git",
+        "diff",
+        "--check"
+      ],
+      "exit_code": 0,
+      "duration_seconds": 0.234
+    }
+  ]
+}

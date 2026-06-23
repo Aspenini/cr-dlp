@@ -6,6 +6,16 @@ module CrDlp
     end
   end
 
+  class DownloadRejection < SidecarValue
+    getter reason : String
+
+    def initialize(@reason : String)
+    end
+  end
+
+  class DownloadBreak < SidecarValue
+  end
+
   class DownloadArchive
     getter path : String
     getter entries : Set(String)

@@ -31,6 +31,9 @@ module CrDlp
   class RequestError < Error
   end
 
+  class UpdateError < Error
+  end
+
   class UnsupportedRequest < RequestError
   end
 

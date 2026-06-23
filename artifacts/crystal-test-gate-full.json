@@ -1,0 +1,155 @@
+{
+  "status": "passed",
+  "results": [
+    {
+      "name": "python helper syntax",
+      "command": [
+        "C:\\Users\\bobfe\\AppData\\Local\\Programs\\Python\\Python310\\python.exe",
+        "-m",
+        "py_compile",
+        "devscripts/differential_crystal.py",
+        "devscripts/differential_jsinterp.py",
+        "devscripts/package_crystal_release.py",
+        "devscripts/extractor_fixture_report.py"
+      ],
+      "exit_code": 0,
+      "duration_seconds": 0.047
+    },
+    {
+      "name": "format check",
+      "command": [
+        "crystal",
+        "tool",
+        "format",
+        "--check",
+        "src",
+        "spec"
+      ],
+      "exit_code": 0,
+      "duration_seconds": 0.109
+    },
+    {
+      "name": "extractor fixture report",
+      "command": [
+        "C:\\Users\\bobfe\\AppData\\Local\\Programs\\Python\\Python310\\python.exe",
+        "devscripts/extractor_fixture_report.py",
+        "--require-implemented-tested",
+        "--output",
+        "artifacts/extractor-fixture-report.json"
+      ],
+      "exit_code": 0,
+      "duration_seconds": 0.094
+    },
+    {
+      "name": "crystal specs",
+      "command": [
+        "crystal",
+        "spec",
+        "--error-trace"
+      ],
+      "exit_code": 0,
+      "duration_seconds": 23.218
+    },
+    {
+      "name": "no-codegen build",
+      "command": [
+        "crystal",
+        "build",
+        "src/cr-dlp.cr",
+        "--no-codegen",
+        "--error-trace"
+      ],
+      "exit_code": 0,
+      "duration_seconds": 1.641
+    },
+    {
+      "name": "release build",
+      "command": [
+        "shards",
+        "build",
+        "--release",
+        "--error-trace"
+      ],
+      "exit_code": 0,
+      "duration_seconds": 67.781
+    },
+    {
+      "name": "package smoke",
+      "command": [
+        "C:\\Users\\bobfe\\AppData\\Local\\Programs\\Python\\Python310\\python.exe",
+        "devscripts/package_crystal_release.py",
+        "--binary",
+        "F:\\Projects\\cr-dlp\\bin\\cr-dlp.exe",
+        "--out-dir",
+        "C:\\Users\\bobfe\\AppData\\Local\\Temp\\cr-dlp-gate-package-rbjkju7w\\dist",
+        "--version",
+        "0.1.0-dev",
+        "--platform",
+        "windows",
+        "--arch",
+        "x86_64",
+        "--manifest-signature",
+        "C:\\Users\\bobfe\\AppData\\Local\\Temp\\cr-dlp-gate-package-rbjkju7w\\manifest.sig"
+      ],
+      "exit_code": 0,
+      "duration_seconds": 0.406
+    },
+    {
+      "name": "static build",
+      "command": [
+        "crystal",
+        "build",
+        "src/cr-dlp.cr",
+        "-o",
+        "F:\\Projects\\cr-dlp\\bin\\cr-dlp-static.exe",
+        "--release",
+        "--static",
+        "--error-trace"
+      ],
+      "exit_code": 0,
+      "duration_seconds": 62.703
+    },
+    {
+      "name": "static binary fixture smoke",
+      "command": [
+        "F:\\Projects\\cr-dlp\\bin\\cr-dlp-static.exe",
+        "--no-config-locations",
+        "--fixup",
+        "never",
+        "-o",
+        "C:\\Users\\bobfe\\AppData\\Local\\Temp\\cr-dlp-gate-static-3iemvgk_\\%(id)s.%(ext)s",
+        "cr-dlp:fixture:static-gate"
+      ],
+      "exit_code": 0,
+      "duration_seconds": 0.016
+    },
+    {
+      "name": "metadata/download differential",
+      "command": [
+        "C:\\Users\\bobfe\\AppData\\Local\\Programs\\Python\\Python310\\python.exe",
+        "devscripts/differential_crystal.py"
+      ],
+      "exit_code": 0,
+      "duration_seconds": 40.75
+    },
+    {
+      "name": "jsinterp differential",
+      "command": [
+        "C:\\Users\\bobfe\\AppData\\Local\\Programs\\Python\\Python310\\python.exe",
+        "devscripts/differential_jsinterp.py"
+      ],
+      "exit_code": 0,
+      "duration_seconds": 1.343
+    },
+    {
+      "name": "diff whitespace check",
+      "command": [
+        "git",
+        "diff",
+        "--check"
+      ],
+      "exit_code": 0,
+      "duration_seconds": 0.094
+    }
+  ]
+}

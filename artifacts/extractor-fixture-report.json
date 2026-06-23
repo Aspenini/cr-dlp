@@ -1,0 +1,246 @@
+{
+  "baseline": {
+    "extractor_count": 1871,
+    "source_commit": "acf8ab7a6e",
+    "test_cases": 6310,
+    "test_suites": 1846,
+    "webpage_test_cases": 187
+  },
+  "baseline_without_tests_count": 25,
+  "baseline_without_tests_sample": [
+    "AWAAN",
+    "AdobeConnect",
+    "DLiveStream",
+    "FOX9",
+    "HistoryPlayer",
+    "LivestreamShortener",
+    "MangomoloLive",
+    "MangomoloVideo",
+    "Minoto",
+    "NicovideoSearch",
+    "NineCNineMedia",
+    "PRXSeriesSearch",
+    "PRXStoriesSearch",
+    "RutubeMovie",
+    "SRGSSR",
+    "SangiinInstruction",
+    "ShareVideosEmbed",
+    "SkyItPlayer",
+    "TestURL",
+    "TwitterShortener"
+  ],
+  "fixture_matchers": {
+    "contains": 5,
+    "count": 379,
+    "exact:NoneType": 1,
+    "exact:bool": 216,
+    "exact:dict": 6460,
+    "exact:float": 738,
+    "exact:int": 4373,
+    "exact:list": 1089,
+    "exact:string": 24970,
+    "hash:md5": 1877,
+    "range:maxcount": 1,
+    "range:mincount": 43,
+    "regex": 1743,
+    "startswith": 6,
+    "type:bool": 1,
+    "type:dict": 4,
+    "type:float": 16,
+    "type:int": 1926,
+    "type:list": 102,
+    "type:str": 118
+  },
+  "implemented": {
+    "baseline_keys": [
+      "ArchiveOrg",
+      "Generic"
+    ],
+    "external_keys": [
+      "File"
+    ],
+    "missing_fixtures": [],
+    "registry_keys": [
+      "File",
+      "ArchiveOrg",
+      "Generic"
+    ]
+  },
+  "suggested_next_batch": [
+    {
+      "has_fixtures": true,
+      "key": "YoutubeClip",
+      "module": "yt_dlp.extractor.youtube",
+      "name": "youtube:clip",
+      "test_count": 1
+    },
+    {
+      "has_fixtures": true,
+      "key": "YoutubeConsentRedirect",
+      "module": "yt_dlp.extractor.youtube",
+      "name": "youtube:consent",
+      "test_count": 1
+    },
+    {
+      "has_fixtures": true,
+      "key": "YoutubeFavourites",
+      "module": "yt_dlp.extractor.youtube",
+      "name": "youtube:favorites",
+      "test_count": 2
+    },
+    {
+      "has_fixtures": true,
+      "key": "YoutubeHistory",
+      "module": "yt_dlp.extractor.youtube",
+      "name": "youtube:history",
+      "test_count": 1
+    },
+    {
+      "has_fixtures": true,
+      "key": "Youtube",
+      "module": "yt_dlp.extractor.youtube",
+      "name": "youtube",
+      "test_count": 73
+    },
+    {
+      "has_fixtures": true,
+      "key": "YoutubeLivestreamEmbed",
+      "module": "yt_dlp.extractor.youtube",
+      "name": "YoutubeLivestreamEmbed",
+      "test_count": 1
+    },
+    {
+      "has_fixtures": true,
+      "key": "YoutubeMusicSearchURL",
+      "module": "yt_dlp.extractor.youtube",
+      "name": "youtube:music:search_url",
+      "test_count": 3
+    },
+    {
+      "has_fixtures": true,
+      "key": "YoutubeNotifications",
+      "module": "yt_dlp.extractor.youtube",
+      "name": "youtube:notif",
+      "test_count": 2
+    },
+    {
+      "has_fixtures": true,
+      "key": "YoutubePlaylist",
+      "module": "yt_dlp.extractor.youtube",
+      "name": "youtube:playlist",
+      "test_count": 6
+    },
+    {
+      "has_fixtures": true,
+      "key": "YoutubeRecommended",
+      "module": "yt_dlp.extractor.youtube",
+      "name": "youtube:recommended",
+      "test_count": 3
+    },
+    {
+      "has_fixtures": true,
+      "key": "YoutubeSearch",
+      "module": "yt_dlp.extractor.youtube",
+      "name": "youtube:search",
+      "test_count": 2
+    },
+    {
+      "has_fixtures": true,
+      "key": "YoutubeSearchURL",
+      "module": "yt_dlp.extractor.youtube",
+      "name": "youtube:search_url",
+      "test_count": 5
+    },
+    {
+      "has_fixtures": true,
+      "key": "YoutubeShortsAudioPivot",
+      "module": "yt_dlp.extractor.youtube",
+      "name": "youtube:shorts:pivot:audio",
+      "test_count": 1
+    },
+    {
+      "has_fixtures": true,
+      "key": "YoutubeSubscriptions",
+      "module": "yt_dlp.extractor.youtube",
+      "name": "youtube:subscriptions",
+      "test_count": 2
+    },
+    {
+      "has_fixtures": true,
+      "key": "YoutubeTab",
+      "module": "yt_dlp.extractor.youtube",
+      "name": "youtube:tab",
+      "test_count": 80
+    },
+    {
+      "has_fixtures": true,
+      "key": "YoutubeTruncatedID",
+      "module": "yt_dlp.extractor.youtube",
+      "name": "youtube:truncated_id",
+      "test_count": 1
+    },
+    {
+      "has_fixtures": true,
+      "key": "YoutubeTruncatedURL",
+      "module": "yt_dlp.extractor.youtube",
+      "name": "youtube:truncated_url",
+      "test_count": 6
+    },
+    {
+      "has_fixtures": true,
+      "key": "YoutubeWatchLater",
+      "module": "yt_dlp.extractor.youtube",
+      "name": "youtube:watchlater",
+      "test_count": 1
+    },
+    {
+      "has_fixtures": true,
+      "key": "YoutubeYtBe",
+      "module": "yt_dlp.extractor.youtube",
+      "name": "YoutubeYtBe",
+      "test_count": 2
+    },
+    {
+      "has_fixtures": true,
+      "key": "YoutubeYtUser",
+      "module": "yt_dlp.extractor.youtube",
+      "name": "youtube:user",
+      "test_count": 1
+    },
+    {
+      "has_fixtures": true,
+      "key": "ABC",
+      "module": "yt_dlp.extractor.abc",
+      "name": "abc.net.au",
+      "test_count": 9
+    },
+    {
+      "has_fixtures": true,
+      "key": "ABCIView",
+      "module": "yt_dlp.extractor.abc",
+      "name": "abc.net.au:iview",
+      "test_count": 4
+    },
+    {
+      "has_fixtures": true,
+      "key": "ABCIViewShowSeries",
+      "module": "yt_dlp.extractor.abc",
+      "name": "abc.net.au:iview:showseries",
+      "test_count": 4
+    },
+    {
+      "has_fixtures": true,
+      "key": "ABCOTVSClips",
+      "module": "yt_dlp.extractor.abcotvs",
+      "name": "abcotvs:clips",
+      "test_count": 1
+    },
+    {
+      "has_fixtures": true,
+      "key": "ABCOTVS",
+      "module": "yt_dlp.extractor.abcotvs",
+      "name": "abcotvs",
+      "test_count": 3
+    }
+  ]
+}

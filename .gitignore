@@ -108,6 +108,9 @@ test/testdata/thumbnails/empty.webp
 test/testdata/thumbnails/foo\ %d\ bar/foo_%d.*
 .ejs-*
 
+# Local native build deps
+/deps/
+
 # Binary
 /youtube-dl
 /youtube-dlc

@@ -284,6 +284,36 @@ module CrDlp
       decrypted
     end
 
+    def aes_gcm_encrypt_and_tag(
+      data : Bytes,
+      key : Bytes,
+      nonce : Bytes,
+      tag_size = BLOCK_SIZE,
+    ) : Tuple(Bytes, Bytes)
+      unless 1 <= tag_size <= BLOCK_SIZE
+        raise CryptoError.new("AES-GCM tag must be between 1 and 16 bytes")
+      end
+      hash_subkey = encrypt_block(Bytes.new(BLOCK_SIZE, 0_u8), key)
+      j0 = if nonce.size == 12
+             append(nonce, Bytes[0, 0, 0, 1])
+           else
+             padding = (BLOCK_SIZE - nonce.size % BLOCK_SIZE) % BLOCK_SIZE + 8
+             ghash_input = append(nonce, Bytes.new(padding, 0_u8), uint64_bytes(nonce.size.to_u64 * 8))
+             ghash(hash_subkey, ghash_input)
+           end
+
+      encrypted = aes_ctr_encrypt(data, key, increment(j0))
+      padding = (BLOCK_SIZE - encrypted.size % BLOCK_SIZE) % BLOCK_SIZE
+      authentication_input = append(
+        encrypted,
+        Bytes.new(padding, 0_u8),
+        Bytes.new(8, 0_u8),
+        uint64_bytes(encrypted.size.to_u64 * 8),
+      )
+      tag = aes_ctr_encrypt(ghash(hash_subkey, authentication_input), key, j0)[0, tag_size]
+      {encrypted, tag}
+    end
+
     def aes_decrypt_text(data : String, password : String, key_size : Int32) : Bytes
       validate_key_size(key_size)
       decoded = Base64.decode(data)

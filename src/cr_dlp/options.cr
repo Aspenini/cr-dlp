@@ -232,6 +232,9 @@ module CrDlp
             search, index = consume_value(nil, arguments, index)
             replacement, index = consume_value(nil, arguments, index)
             apply_metadata_replacement(result.values, value, search, replacement)
+          elsif definition.flags.includes?("--print-to-file")
+            path, index = consume_value(nil, arguments, index)
+            apply_print_to_file(result.values, value, path)
           else
             apply_callback(result.values, definition, value)
           end
@@ -425,6 +428,22 @@ module CrDlp
           "replacement" => JSON::Any.new(replacement),
         })
       end
+    end
+
+    private def apply_print_to_file(
+      values : Hash(String, JSON::Any),
+      template_spec : String,
+      path : String,
+    )
+      stage, template = dictionary_entry("print_to_file", template_spec)
+      dictionary = values["print_to_file"]?.try(&.as_h?) || Hash(String, JSON::Any).new
+      entries = dictionary[stage]?.try(&.as_a?) || [] of JSON::Any
+      entries << JSON::Any.new({
+        "template" => JSON::Any.new(template),
+        "path"     => JSON::Any.new(path),
+      })
+      dictionary[stage] = JSON::Any.new(entries)
+      values["print_to_file"] = JSON::Any.new(dictionary)
     end
 
     private def append_metadata_action(

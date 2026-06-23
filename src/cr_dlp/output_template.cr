@@ -113,7 +113,7 @@ module CrDlp
           effective_type = 'd'
         end
       end
-      formatted = format_value(value, effective_flags, effective_type)
+      formatted = format_value(value, effective_flags, effective_type, field)
       unless formatted
         fallback = default.nil? ? @na_placeholder : unescape(default)
         return "" if fallback.empty?
@@ -239,7 +239,7 @@ module CrDlp
       result
     end
 
-    private def format_value(value : JSON::Any, flags : String, type : Char) : String?
+    private def format_value(value : JSON::Any, flags : String, type : Char, field : String) : String?
       case type
       when 's'
         printf_string(flags, scalar_string(value))
@@ -266,9 +266,79 @@ module CrDlp
         number = numeric(value)
         return unless number
         decimal_suffix(number, flags.includes?('#') ? 1024.0 : 1000.0, flags)
+      when 'h'
+        escape_html(scalar_string(value))
+      when 'B'
+        format_bytes(flags, scalar_string(value))
+      when 'U'
+        normalize_unicode(scalar_string(value), flags)
+      when 'S'
+        sanitize_value(field, scalar_string(value), restricted: flags.includes?('#'))
       else
         printf_string(flags, scalar_string(value))
       end
+    end
+
+    private def escape_html(value : String) : String
+      value
+        .gsub('&', "&amp;")
+        .gsub('<', "&lt;")
+        .gsub('>', "&gt;")
+        .gsub('"', "&quot;")
+        .gsub("'", "&#39;")
+    end
+
+    private def format_bytes(flags : String, value : String) : String
+      bytes = value.to_slice
+      width = extract_printf_width(flags)
+      if width > 0
+        pad_byte = flags.includes?('0') ? 0_u8 : 32_u8
+        if bytes.size < width
+          bytes = Bytes.new(width - bytes.size, pad_byte) + bytes
+        elsif bytes.size > width
+          bytes = bytes[0, width]
+        end
+      end
+      String.new(bytes)
+    end
+
+    private def extract_printf_width(flags : String) : Int32
+      match = flags.gsub("#", "").match(/\A0*(\d+)/)
+      match ? match[1].to_i32 : 0
+    end
+
+    private def normalize_unicode(value : String, flags : String) : String
+      form = if flags.includes?('+')
+               flags.includes?('#') ? Unicode::NormalizationForm::NFKD : Unicode::NormalizationForm::NFKC
+             else
+               flags.includes?('#') ? Unicode::NormalizationForm::NFD : Unicode::NormalizationForm::NFC
+             end
+      value.unicode_normalize(form)
+    end
+
+    private def sanitize_value(key : String, value : String, restricted : Bool = false) : String
+      return restricted_filename(value) if restricted || @restrict_filenames
+      if @windows_filenames != false || {{ flag?(:win32) }}
+        replacements = {
+          '"'  => '＂',
+          '*'  => '＊',
+          ':'  => '：',
+          '<'  => '＜',
+          '>'  => '＞',
+          '?'  => '？',
+          '|'  => '｜',
+          '/'  => '⧸',
+          '\\' => '⧹',
+        }
+        sanitized = String.build do |output|
+          value.each_char do |char|
+            next if char.ord < 32 || char.ord == 127
+            output << (replacements[char]? || char)
+          end
+        end.rstrip(" .")
+        return sanitized.empty? ? "_" : sanitized
+      end
+      value.gsub('/', '⧸').delete('\0')
     end
 
     private def shell_quote(value : String) : String
@@ -399,31 +469,6 @@ module CrDlp
 
     private def unescape(value : String) : String
       value.gsub(/\\([,|&>\\])/, "\\1")
-    end
-
-    private def sanitize_value(key : String, value : String) : String
-      return restricted_filename(value) if @restrict_filenames
-      if @windows_filenames != false || {{ flag?(:win32) }}
-        replacements = {
-          '"'  => '＂',
-          '*'  => '＊',
-          ':'  => '：',
-          '<'  => '＜',
-          '>'  => '＞',
-          '?'  => '？',
-          '|'  => '｜',
-          '/'  => '⧸',
-          '\\' => '⧹',
-        }
-        sanitized = String.build do |output|
-          value.each_char do |char|
-            next if char.ord < 32 || char.ord == 127
-            output << (replacements[char]? || char)
-          end
-        end.rstrip(" .")
-        return sanitized.empty? ? "_" : sanitized
-      end
-      value.gsub('/', '⧸').delete('\0')
     end
 
     private def restricted_filename(value : String) : String

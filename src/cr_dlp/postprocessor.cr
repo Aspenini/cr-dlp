@@ -18,6 +18,17 @@ module CrDlp
     end
   end
 
+  class ExtraSidecarFiles < SidecarValue
+    getter paths : Array(String)
+
+    def initialize(@paths = [] of String)
+    end
+
+    def add(path : String)
+      @paths << path unless @paths.includes?(path)
+    end
+  end
+
   abstract class PostProcessor
     getter client : Client
 
@@ -124,7 +135,7 @@ module CrDlp
       expression = Regex.new(self.class.format_to_regex(output), Regex::Options::MULTILINE)
       match = expression.match(source)
       unless match
-        STDERR.puts("[MetadataParser] Could not interpret #{input.inspect} as #{output.inspect}")
+        @client.info_log("[MetadataParser] Could not interpret #{input.inspect} as #{output.inspect}")
         return
       end
       match.named_captures.each do |name, value|
@@ -136,9 +147,9 @@ module CrDlp
       value = info.string?(field)
       unless value
         if info[field]?
-          STDERR.puts("WARNING: Cannot replace in non-string metadata field #{field}")
+          @client.warning("Cannot replace in non-string metadata field #{field}")
         else
-          STDERR.puts("[MetadataParser] Video does not have a #{field}")
+          @client.info_log("[MetadataParser] Video does not have a #{field}")
         end
         return
       end
@@ -168,7 +179,7 @@ module CrDlp
 
     def run(info : Info) : Info
       unless info.string?("extractor_key") == "Youtube"
-        STDERR.puts("[SponsorBlock] SponsorBlock is not supported for #{info.string?("extractor_key") || "unknown"}")
+        @client.info_log("[SponsorBlock] SponsorBlock is not supported for #{info.string?("extractor_key") || "unknown"}")
         return info
       end
 
@@ -218,7 +229,7 @@ module CrDlp
           ]),
         })
       end
-      STDERR.puts("WARNING: Some SponsorBlock segments have incompatible durations") if rejected > 0
+      @client.warning("Some SponsorBlock segments have incompatible durations") if rejected > 0
       info["sponsorblock_chapters"] = JSON::Any.new(chapters)
       info
     rescue error : HttpError
@@ -249,7 +260,7 @@ module CrDlp
         "actionTypes" => %w[skip poi chapter].to_json,
       })
       url = "#{api.rstrip('/')}/api/skipSegments/#{hash_prefix}?#{query}"
-      response = @client.request_director.send(Networking::Request.new(url))
+      response = @client.send_request(Networking::Request.new(url))
       JSON.parse(response.text).as_a.each do |entry|
         values = entry.as_h
         return values["segments"]?.try(&.as_a?) || [] of JSON::Any if values["videoID"]?.try(&.as_s?) == video_id
@@ -312,7 +323,7 @@ module CrDlp
       info["chapters"] = JSON::Any.new(arranged)
       return info if cuts.empty?
       if arranged.empty?
-        STDERR.puts("WARNING: You requested removal of the entire video, which is not possible")
+        @client.warning("You requested removal of the entire video, which is not possible")
         return info
       end
 
@@ -868,7 +879,7 @@ module CrDlp
           if SUPPORTED_SUBTITLES.includes?(extension)
             paths << path
           else
-            STDERR.puts("WARNING: Cannot remove chapters from external #{extension} subtitle #{path}")
+            @client.warning("Cannot remove chapters from external #{extension} subtitle #{path}")
           end
         end
       end
@@ -904,7 +915,7 @@ module CrDlp
     def run(info : Info) : Info
       chapters = info.array?("chapters")
       unless chapters && !chapters.empty?
-        STDERR.puts("[SplitChapters] Chapter information is unavailable")
+        @client.info_log("[SplitChapters] Chapter information is unavailable")
         return info
       end
       source = info.string?("filepath") ||
@@ -1275,9 +1286,9 @@ module CrDlp
         rescue error : XAttrWriteError
           case error.reason
           when .no_space?
-            STDERR.puts("WARNING: Extended attribute #{attribute.inspect} was not written: no space or quota exceeded")
+            @client.warning("Extended attribute #{attribute.inspect} was not written: no space or quota exceeded")
           when .value_too_long?
-            STDERR.puts("WARNING: Extended attribute #{attribute.inspect} was too long")
+            @client.warning("Extended attribute #{attribute.inspect} was too long")
           else
             raise PostProcessingError.new(
               "This filesystem doesn't support extended attributes: #{error.message}",
@@ -1413,14 +1424,14 @@ module CrDlp
       mapping = @client.options.string?("audioformat") || "best"
       target, skip_reason = resolve_mapping(source_extension, mapping)
       unless target
-        STDERR.puts("[ExtractAudio] Not converting audio #{source}; #{skip_reason}")
+        @client.info_log("[ExtractAudio] Not converting audio #{source}; #{skip_reason}")
         return info
       end
       unless SUPPORTED_FORMATS.includes?(target)
         raise PostProcessingError.new("Unsupported audio conversion format #{target}")
       end
       if target == "best" && COMMON_AUDIO_EXTENSIONS.includes?(source_extension)
-        STDERR.puts("[ExtractAudio] Not converting audio #{source}; the file is already in a common audio format")
+        @client.info_log("[ExtractAudio] Not converting audio #{source}; the file is already in a common audio format")
         return info
       end
 
@@ -1429,7 +1440,7 @@ module CrDlp
       destination = replace_extension(source, extension)
       if @client.options.bool?("nopostoverwrites") == true &&
          File.exists?(destination) && destination != source
-        STDERR.puts("[ExtractAudio] Post-process file #{destination} exists, skipping")
+        @client.info_log("[ExtractAudio] Post-process file #{destination} exists, skipping")
         return info
       end
 
@@ -1528,20 +1539,20 @@ module CrDlp
       mapping = format_mapping
       target, skip_reason = resolve_mapping(source_extension, mapping)
       unless target
-        STDERR.puts("[#{key}] Not #{action} media file #{source}; #{skip_reason}")
+        @client.info_log("[#{key}] Not #{action} media file #{source}; #{skip_reason}")
         return info
       end
       unless SUPPORTED_FORMATS.includes?(target)
         raise PostProcessingError.new("Unsupported #{action} format #{target}")
       end
       if skip_reason
-        STDERR.puts("[#{key}] Not #{action} media file #{source}; #{skip_reason}")
+        @client.info_log("[#{key}] Not #{action} media file #{source}; #{skip_reason}")
         return info
       end
 
       destination = replace_extension(source, target)
       if @client.options.bool?("nopostoverwrites") == true && File.exists?(destination)
-        STDERR.puts("[#{key}] Post-process file #{destination} exists, skipping")
+        @client.info_log("[#{key}] Post-process file #{destination} exists, skipping")
         return info
       end
       run_ffmpeg_transform(source, destination, transform_arguments(target), action)
@@ -1657,12 +1668,12 @@ module CrDlp
             ])
           end
         elsif add_infojson? == true
-          STDERR.puts("[FFmpegMetadata] The info-json can only be attached to mkv/mka files")
+          @client.info_log("[FFmpegMetadata] The info-json can only be attached to mkv/mka files")
         end
       end
 
       if output_options == stream_copy_arguments(extension)
-        STDERR.puts("[FFmpegMetadata] There isn't any metadata to add")
+        @client.info_log("[FFmpegMetadata] There isn't any metadata to add")
         return info
       end
 
@@ -1906,7 +1917,7 @@ module CrDlp
       if File.exists?(source)
         move_file(source, destination)
       elsif @client.options.bool?("skip_download") != true
-        STDERR.puts("WARNING: File #{source} cannot be found")
+        @client.warning("File #{source} cannot be found")
       end
       info["filepath"] = destination
       info["_filename"] = destination
@@ -1935,6 +1946,9 @@ module CrDlp
       info.array?("chapters").try do |chapters|
         chapters.each { |value| move_related_path(value.as_h, plan) }
       end
+      if sidecars = info.sidecar["extra_sidecar_files"]?.as?(ExtraSidecarFiles)
+        sidecars.paths.map! { |source| move_related_path(source, plan) || source }
+      end
     end
 
     private def move_related_path(values : Hash(String, JSON::Any), plan : MovePlan)
@@ -1957,12 +1971,12 @@ module CrDlp
     private def move_file(source : String, destination : String)
       return if Path.new(source).expand == Path.new(destination).expand
       unless File.exists?(source)
-        STDERR.puts("WARNING: File #{source} cannot be found")
+        @client.warning("File #{source} cannot be found")
         return
       end
       if File.exists?(destination)
         if @client.options.bool?("overwrites") == false
-          STDERR.puts("WARNING: Cannot move #{source}; #{destination} already exists")
+          @client.warning("Cannot move #{source}; #{destination} already exists")
           return
         end
         File.delete(destination)
@@ -2060,7 +2074,7 @@ module CrDlp
         extension = subtitle["ext"]?.try(&.as_s?) || Path.new(source).extension.lstrip('.')
         next if extension == target
         if extension.in?("json", "json3")
-          STDERR.puts("WARNING: Skipping conversion of #{language} JSON subtitles")
+          @client.warning("Skipping conversion of #{language} JSON subtitles")
           next
         end
 
@@ -2203,7 +2217,7 @@ module CrDlp
     def run(info : Info) : Info
       extension = info.ext.downcase
       unless SUPPORTED_EXTENSIONS.includes?(extension)
-        STDERR.puts(
+        @client.info_log(
           "[FFmpegEmbedSubtitle] Subtitles can only be embedded in " \
           "#{SUPPORTED_EXTENSIONS.join(", ")} files",
         )
@@ -2212,7 +2226,7 @@ module CrDlp
 
       subtitles = info.hash?("requested_subtitles")
       unless subtitles && !subtitles.empty?
-        STDERR.puts("[FFmpegEmbedSubtitle] There aren't any subtitles to embed")
+        @client.info_log("[FFmpegEmbedSubtitle] There aren't any subtitles to embed")
         return info
       end
 
@@ -2223,7 +2237,7 @@ module CrDlp
         subtitle = value.as_h
         path = subtitle["filepath"]?.try(&.as_s?)
         unless path && File.exists?(path)
-          STDERR.puts("WARNING: Skipping embedding #{language} subtitle because the file is missing")
+          @client.warning("Skipping embedding #{language} subtitle because the file is missing")
           next
         end
 
@@ -2232,18 +2246,18 @@ module CrDlp
           Path.new(path).extension.lstrip('.')
         ).downcase
         if subtitle_extension.in?("json", "json3")
-          STDERR.puts("WARNING: JSON subtitles cannot be embedded")
+          @client.warning("JSON subtitles cannot be embedded")
           next
         end
         if extension == "webm" && subtitle_extension != "vtt"
           unless warned_webm
-            STDERR.puts("WARNING: Only WebVTT subtitles can be embedded in webm files")
+            @client.warning("Only WebVTT subtitles can be embedded in webm files")
             warned_webm = true
           end
           next
         end
         if extension == "mp4" && subtitle_extension == "ass" && !warned_mp4_ass
-          STDERR.puts("WARNING: ASS subtitles cannot be properly embedded in mp4 files; expect issues")
+          @client.warning("ASS subtitles cannot be properly embedded in mp4 files; expect issues")
           warned_mp4_ass = true
         end
 
@@ -2348,14 +2362,14 @@ module CrDlp
         end
       end
       unless thumbnail
-        STDERR.puts("[EmbedThumbnail] There are no thumbnails on disk")
+        @client.info_log("[EmbedThumbnail] There are no thumbnails on disk")
         return info
       end
 
       values = thumbnail.as_h
       original_thumbnail = values["filepath"].as_s
       unless File.exists?(original_thumbnail)
-        STDERR.puts("WARNING: Skipping embedding the thumbnail because the file is missing")
+        @client.warning("Skipping embedding the thumbnail because the file is missing")
         return info
       end
 

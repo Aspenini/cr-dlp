@@ -89,7 +89,9 @@ end
 describe CrDlp::ArchiveOrgExtractor do
   it "matches before Generic and extracts an explicitly selected file" do
     client = archive_client
-    client.extractor_registry.keys.should eq(["Fixture", "ArchiveOrg", "Generic"])
+    keys = client.extractor_registry.keys
+    keys.index("ArchiveOrg").not_nil!.should be < keys.index("Generic").not_nil!
+    keys.last.should eq("Generic")
     info = client.extract_info(
       "https://archive.org/details/FixtureArchive/first.mp4",
       download: false,

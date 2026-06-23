@@ -26,7 +26,7 @@ module CrDlp
 
     def extract(url : String) : Info
       identifier, entry_id = match_id(url)
-      metadata_response = @client.request_director.send(
+      metadata_response = @client.send_request(
         Networking::Request.new("https://archive.org/metadata/#{URI.encode_path_segment(identifier)}")
       )
       metadata = JSON.parse(metadata_response.text).as_h
@@ -34,7 +34,7 @@ module CrDlp
                       raise ExtractorError.new("Archive.org response has no metadata")
       identifier = string_value(item_metadata["identifier"]?) || identifier
 
-      playlist_response = @client.request_director.send(
+      playlist_response = @client.send_request(
         Networking::Request.new("https://archive.org/embed/#{URI.encode_path_segment(identifier)}")
       )
       playlist = parse_playlist(playlist_response.text)

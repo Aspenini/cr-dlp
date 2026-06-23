@@ -1,3 +1,5 @@
+require "http"
+
 module CrDlp
   alias ProgressHook = Proc(Hash(String, JSON::Any), Nil)
 
@@ -10,12 +12,19 @@ module CrDlp
     abstract def protocols : Array(String)
     abstract def download(info : Info, filename : String) : String
 
-    protected def publish(status : String, info : Info, filename : String, downloaded : Int64? = nil)
+    protected def publish(
+      status : String,
+      info : Info,
+      filename : String,
+      downloaded : Int64? = nil,
+      total : Int64? = nil,
+    )
       event = Hash(String, JSON::Any).new
       event["status"] = JSON::Any.new(status)
       event["filename"] = JSON::Any.new(filename)
       event["info_dict"] = JSON::Any.new(info.data)
       event["downloaded_bytes"] = JSON::Any.new(downloaded) if downloaded
+      event["total_bytes"] = JSON::Any.new(total) if total
       @client.publish_progress(event)
     end
 
@@ -68,6 +77,81 @@ module CrDlp
     end
   end
 
+  class FileDownloader < Downloader
+    def protocols : Array(String)
+      ["file"]
+    end
+
+    def download(info : Info, filename : String) : String
+      part = filename
+      source = info.url
+      raise DownloadError.new("Local file does not exist: #{source}") unless File.file?(source)
+      if Path.new(source).expand == Path.new(filename).expand
+        publish("finished", info, filename, File.size(source))
+        return filename
+      end
+      if File.exists?(filename) && @client.options.bool?("overwrites") != true
+        publish("finished", info, filename, File.size(filename))
+        return filename
+      end
+
+      part = @client.options.bool?("nopart") ? filename : "#{filename}.part"
+      FileUtils.mkdir_p(Path.new(filename).parent)
+      publish("downloading", info, filename, 0_i64)
+      File.open(source, "rb") do |input|
+        File.open(part, "wb") do |output|
+          @client.copy_stream(input, output)
+        end
+      end
+      unless part == filename
+        File.delete?(filename)
+        File.rename(part, filename)
+      end
+      publish("finished", info, filename, File.size(filename))
+      filename
+    rescue error : DownloadError
+      raise error
+    rescue error
+      File.delete?(part) if part && part != filename
+      raise DownloadError.new("Unable to copy local file: #{error.message}", cause: error)
+    end
+  end
+
+  class ExternalDownloader < Downloader
+    def initialize(client : Client, @command : String)
+      super(client)
+    end
+
+    def protocols : Array(String)
+      ["external"]
+    end
+
+    def download(info : Info, filename : String) : String
+      unless @client.process_runner.executable_available?(@command)
+        raise DownloadError.new("External downloader #{@command.inspect} is not available")
+      end
+      FileUtils.mkdir_p(Path.new(filename).parent)
+      publish("downloading", info, filename, 0_i64)
+      arguments = @client.external_downloader_arguments(@command, info, filename)
+      result = @client.process_runner.run(@command, arguments)
+      unless result.success?
+        detail = result.error.strip
+        detail = result.output.strip if detail.empty?
+        detail = "exit code #{result.exit_code}" if detail.empty?
+        raise DownloadError.new("External downloader #{@command} failed: #{detail}")
+      end
+      unless File.exists?(filename)
+        raise DownloadError.new("External downloader #{@command} completed without creating #{filename}")
+      end
+      publish("finished", info, filename, File.size(filename))
+      filename
+    rescue error : DownloadError
+      raise error
+    rescue error
+      raise DownloadError.new("Unable to run external downloader #{@command}: #{error.message}", cause: error)
+    end
+  end
+
   class HttpDownloader < Downloader
     def protocols : Array(String)
       ["http", "https"]
@@ -84,6 +168,7 @@ module CrDlp
       File.delete?(part) if @client.options.bool?("continue_dl") == false
       attempts = retry_count + 1
       last_error = nil.as(Exception?)
+      completed_response = nil.as(Networking::Response?)
 
       attempts.times do |attempt|
         offset = File.exists?(part) ? File.size(part) : 0_i64
@@ -92,33 +177,22 @@ module CrDlp
           break
         end
         headers = request_headers(info)
-        if limit = test_limit
-          headers["Range"] = "bytes=#{offset}-#{limit - 1}"
-        elsif offset > 0
-          headers["Range"] = "bytes=#{offset}-"
-        end
+        apply_resume_range(headers, offset)
         publish("downloading", info, filename, offset)
+        response = nil.as(Networking::Response?)
         begin
           mode = offset > 0 ? "ab" : "wb"
-          File.open(part, mode) do |output|
-            response = @client.request_director.download(
-              Networking::Request.new(info.url, headers: headers),
-              output,
-              ->(received : Int64, total : Int64?) do
-                publish("downloading", info, filename, offset + received)
-              end,
-            )
-            if offset > 0 && response.status != 206
-              output.close
-              File.delete?(part)
-              raise DownloadError.new("Server did not honor the resume request")
-            end
-          end
+          response = if chunk_size = @client.http_chunk_size
+                       download_chunks(info, filename, part, mode, headers, offset, chunk_size)
+                     else
+                       download_once(info, filename, part, mode, headers, offset)
+                     end
+          completed_response = response
           last_error = nil
           break
         rescue error
           last_error = error
-          sleep Math.min(2 ** attempt, 5).seconds if attempt + 1 < attempts
+          @client.sleep_for(@client.retry_sleep("http", attempt, Math.min(2 ** attempt, 5).seconds)) if attempt + 1 < attempts
         end
       end
       raise DownloadError.new("Download failed after #{attempts} attempts", cause: last_error) if last_error
@@ -127,6 +201,7 @@ module CrDlp
         File.delete?(filename)
         File.rename(part, filename)
       end
+      apply_mtime(filename, completed_response)
       publish("finished", info, filename, File.size(filename))
       filename
     rescue error : DownloadError
@@ -141,6 +216,110 @@ module CrDlp
         values.each { |key, value| headers[key] = value.as_s }
       end
       headers
+    end
+
+    private def apply_resume_range(headers : Hash(String, String), offset : Int64)
+      if limit = test_limit
+        headers["Range"] = "bytes=#{offset}-#{limit - 1}"
+      elsif offset > 0
+        headers["Range"] = "bytes=#{offset}-"
+      end
+    end
+
+    private def download_once(
+      info : Info,
+      filename : String,
+      part : String,
+      mode : String,
+      headers : Hash(String, String),
+      offset : Int64,
+    ) : Networking::Response
+      File.open(part, mode) do |output|
+        response = @client.download_request(
+          Networking::Request.new(info.url, headers: headers),
+          @client.rate_limited_io(output, offset),
+          ->(received : Int64, total : Int64?) do
+            publish("downloading", info, filename, offset + received, total.try { |value| offset + value })
+          end,
+        )
+        if offset > 0 && response.status != 206
+          output.close
+          File.delete?(part)
+          raise DownloadError.new("Server did not honor the resume request")
+        end
+        response
+      end
+    end
+
+    private def download_chunks(
+      info : Info,
+      filename : String,
+      part : String,
+      mode : String,
+      base_headers : Hash(String, String),
+      offset : Int64,
+      chunk_size : Int64,
+    ) : Networking::Response
+      current_offset = offset
+      final_response = nil.as(Networking::Response?)
+      total = nil.as(Int64?)
+      File.open(part, mode) do |output|
+        loop do
+          before = File.exists?(part) ? File.size(part) : 0_i64
+          headers = base_headers.dup
+          range_end = current_offset + chunk_size - 1
+          if limit = test_limit
+            range_end = Math.min(range_end, limit - 1)
+          end
+          headers["Range"] = "bytes=#{current_offset}-#{range_end}"
+          response = @client.download_request(
+            Networking::Request.new(info.url, headers: headers),
+            @client.rate_limited_io(output, current_offset),
+            ->(received : Int64, response_total : Int64?) do
+              known_total = total || response_total.try { |value| current_offset + value }
+              publish("downloading", info, filename, current_offset + received, known_total)
+            end,
+          )
+          output.flush
+          final_response = response
+          if current_offset > 0 && response.status != 206
+            output.close
+            File.delete?(part)
+            raise DownloadError.new("Server did not honor the chunked range request")
+          end
+          total ||= content_range_total(response)
+          downloaded = File.size(part) - before
+          raise DownloadError.new("Chunked download made no progress") if downloaded <= 0
+          current_offset += downloaded
+          break if response.status != 206
+          break if (limit = test_limit) && current_offset >= limit
+          break if total && current_offset >= total.not_nil!
+          break if downloaded < chunk_size
+        end
+      end
+      final_response || raise DownloadError.new("Chunked download produced no response")
+    end
+
+    private def content_range_total(response : Networking::Response) : Int64?
+      header_value(response, "Content-Range").try do |value|
+        match = value.match(/\/(?<total>\d+|\*)\s*\z/)
+        total = match.try(&.["total"]?)
+        total == "*" ? nil : total.try(&.to_i64?)
+      end
+    end
+
+    private def apply_mtime(filename : String, response : Networking::Response?)
+      return unless response && @client.options.bool?("updatetime") == true
+      value = header_value(response, "Last-Modified") || return
+      modification_time = HTTP.parse_time(value) || return
+      File.utime(modification_time, modification_time, filename)
+    rescue error
+      @client.warning("Unable to set file modification time: #{error.message}")
+    end
+
+    private def header_value(response : Networking::Response, name : String) : String?
+      response.headers[name]? ||
+        response.headers.find { |key, _| key.downcase == name.downcase }.try(&.[1])
     end
 
     private def retry_count : Int32
@@ -206,7 +385,7 @@ module CrDlp
               publish_fragment(info, filename, index + 1, fragments.size, output.pos)
             rescue error
               if skip_unavailable?
-                STDERR.puts("WARNING: Skipping fragment #{index + 1}: #{error.message}")
+                @client.warning("Skipping fragment #{index + 1}: #{error.message}")
                 next
               end
               raise error
@@ -226,7 +405,7 @@ module CrDlp
     end
 
     private def load_media_playlist(url : String, info : Info) : Manifest::Hls::Playlist
-      response = @client.request_director.send(
+      response = @client.send_request(
         Networking::Request.new(url, headers: request_headers(info))
       )
       playlist = Manifest::Hls::Parser.parse(response.text, response.url)
@@ -265,7 +444,7 @@ module CrDlp
               preserve_fragment(part, downloaded_fragments, bytes)
             rescue error
               raise error unless skip_unavailable?
-              STDERR.puts("WARNING: Skipping fragment #{downloaded_fragments + 1}: #{error.message}")
+              @client.warning("Skipping fragment #{downloaded_fragments + 1}: #{error.message}")
             end
             seen << key
             downloaded_fragments += 1
@@ -333,7 +512,7 @@ module CrDlp
           if range = fragment.byte_range
             headers["Range"] = range.header
           end
-          response = @client.request_director.send(Networking::Request.new(fragment.url, headers: headers))
+          response = @client.send_request(Networking::Request.new(fragment.url, headers: headers))
           bytes = response.body
           if encryption = fragment.encryption
             bytes = decrypt(bytes, encryption, fragment.media_sequence, info)
@@ -341,7 +520,7 @@ module CrDlp
           return bytes
         rescue error
           last_error = error
-          sleep retry_delay(attempt) if attempt + 1 < attempts
+          @client.sleep_for(retry_delay(attempt)) if attempt + 1 < attempts
         end
       end
       raise DownloadError.new("Fragment #{fragment.url} failed after #{attempts} attempts", cause: last_error)
@@ -377,7 +556,7 @@ module CrDlp
         result = results.receive
         if error = result.error
           if skip_unavailable?
-            STDERR.puts("WARNING: Skipping fragment #{result.index + 1}: #{error.message}")
+            @client.warning("Skipping fragment #{result.index + 1}: #{error.message}")
             ordered[result.index] = Bytes.empty
           else
             raise error
@@ -478,11 +657,11 @@ module CrDlp
     end
 
     private def fragment_retries : Int32
-      Math.max(0, (@client.options.int?("fragment_retries") || 10).to_i)
+      @client.fragment_retry_count
     end
 
     private def retry_delay(attempt : Int32) : Time::Span
-      Math.min(2 ** attempt, 5).seconds
+      @client.retry_sleep("fragment", attempt, Math.min(2 ** attempt, 5).seconds)
     end
 
     private def continuedl? : Bool
@@ -525,7 +704,7 @@ module CrDlp
             publish_fragment(info, filename, index + 1, fragments.size, output.pos)
           rescue error
             if skip_unavailable?
-              STDERR.puts("WARNING: Skipping fragment #{index + 1}: #{error.message}")
+              @client.warning("Skipping fragment #{index + 1}: #{error.message}")
               next
             end
             raise error
@@ -553,10 +732,10 @@ module CrDlp
           if byte_range = fragment["range"]?.try(&.as_s?)
             headers["Range"] = "bytes=#{byte_range}"
           end
-          return @client.request_director.send(Networking::Request.new(url, headers: headers)).body
+          return @client.send_request(Networking::Request.new(url, headers: headers)).body
         rescue error
           last_error = error
-          sleep Math.min(2 ** attempt, 5).seconds if attempt + 1 < attempts
+          @client.sleep_for(@client.retry_sleep("fragment", attempt, Math.min(2 ** attempt, 5).seconds)) if attempt + 1 < attempts
         end
       end
       raise DownloadError.new("DASH fragment #{url} failed after #{attempts} attempts", cause: last_error)
@@ -595,7 +774,7 @@ module CrDlp
               preserve_fragment(part, downloaded_fragments, bytes)
             rescue error
               raise error unless skip_unavailable?
-              STDERR.puts("WARNING: Skipping fragment #{downloaded_fragments + 1}: #{error.message}")
+              @client.warning("Skipping fragment #{downloaded_fragments + 1}: #{error.message}")
             end
             seen << key
             downloaded_fragments += 1
@@ -605,7 +784,7 @@ module CrDlp
 
           break if @client.options.bool?("test") || !presentation.dynamic
           sleep live_refresh_interval(presentation.minimum_update_period)
-          response = @client.request_director.send(
+          response = @client.send_request(
             Networking::Request.new(manifest_url, headers: request_headers(info))
           )
           manifest_url = response.url
@@ -704,7 +883,7 @@ module CrDlp
     end
 
     private def fragment_retries : Int32
-      Math.max(0, (@client.options.int?("fragment_retries") || 10).to_i)
+      @client.fragment_retry_count
     end
 
     private def skip_unavailable? : Bool
@@ -731,7 +910,7 @@ module CrDlp
       part = temporary_filename(filename)
       FileUtils.mkdir_p(Path.new(filename).parent)
       File.delete?(part)
-      response = @client.request_director.open_websocket(
+      response = @client.open_websocket(
         Networking::Request.new(info.url, headers: request_headers(info))
       )
       downloaded = 0_i64

@@ -26,7 +26,7 @@ module CrDlp
       url : String,
       headers = Hash(String, String).new,
     ) : Networking::WebSocketResponse
-      @client.request_director.open_websocket(
+      @client.open_websocket(
         Networking::Request.new(url, headers: headers)
       )
     end
@@ -102,6 +102,57 @@ module CrDlp
     end
   end
 
+  class FileExtractor < Extractor
+    def key : String
+      "File"
+    end
+
+    def name : String
+      "file"
+    end
+
+    def suitable?(url : String) : Bool
+      return false unless @client.options.bool?("enable_file_urls") == true
+      return URI.parse(url).scheme == "file" if url.starts_with?("file:")
+      File.file?(url)
+    rescue URI::Error
+      false
+    end
+
+    def extract(url : String) : Info
+      path = file_path(url)
+      raise ExtractorError.new("File URL does not exist: #{path}", true) unless File.file?(path)
+      basename = Path.new(path).basename
+      extension = Path.new(basename).extension.lstrip('.')
+      id = extension.empty? ? basename : basename.rchop(".#{extension}")
+      info = base_info(id, id, url)
+      info["url"] = File.expand_path(path)
+      info["protocol"] = "file"
+      info["ext"] = extension.empty? ? "unknown_video" : extension.downcase
+      info["filesize"] = File.size(path)
+      info
+    rescue error : ExtractorError
+      raise error
+    rescue error
+      raise ExtractorError.new("Unable to read file URL #{url}: #{error.message}", true, cause: error)
+    end
+
+    private def file_path(url : String) : String
+      return url unless url.starts_with?("file:")
+      uri = URI.parse(url)
+      path = URI.decode(uri.path)
+      {% if flag?(:win32) %}
+        if host = uri.host
+          unless host.empty? || host.downcase == "localhost"
+            return "\\\\#{host}#{path.gsub('/', '\\')}"
+          end
+        end
+        path = path.lchop('/') if path.matches?(/\A\/[A-Za-z]:/)
+      {% end %}
+      path
+    end
+  end
+
   class GenericExtractor < Extractor
     EXTENSIONS = %w[
       3gp aac avi flac flv gif jpeg jpg m4a m4v mkv mov mp3 mp4 mpeg mpg
@@ -139,7 +190,7 @@ module CrDlp
     end
 
     private def extract_hls(url : String, basename : String) : Info
-      response = @client.request_director.send(Networking::Request.new(url))
+      response = @client.send_request(Networking::Request.new(url))
       playlist = Manifest::Hls::Parser.parse(response.text, response.url)
       id = basename.rchop(".m3u8")
       info = base_info(id, id, url)
@@ -178,7 +229,7 @@ module CrDlp
     end
 
     private def extract_dash(url : String, basename : String) : Info
-      response = @client.request_director.send(Networking::Request.new(url))
+      response = @client.send_request(Networking::Request.new(url))
       presentation = Manifest::Dash::Parser.parse(response.text, response.url)
       best = presentation.best_representation ||
              raise ExtractorError.new("DASH manifest has no downloadable formats")

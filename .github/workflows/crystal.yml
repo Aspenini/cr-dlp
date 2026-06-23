@@ -6,6 +6,7 @@ on:
       - "baseline/crystal/**"
       - "devscripts/export_crystal_baseline.py"
       - "devscripts/differential_crystal.py"
+      - "devscripts/differential_jsinterp.py"
       - "shard.yml"
       - "spec/**"
       - "src/**"
@@ -15,6 +16,7 @@ on:
       - "baseline/crystal/**"
       - "devscripts/export_crystal_baseline.py"
       - "devscripts/differential_crystal.py"
+      - "devscripts/differential_jsinterp.py"
       - "shard.yml"
       - "spec/**"
       - "src/**"
@@ -37,15 +39,12 @@ jobs:
       - uses: crystal-lang/install-crystal@v1
         with:
           crystal: 1.20.0
-      - name: Verify formatting
-        run: crystal tool format --check src spec
-      - name: Run specs
-        run: crystal spec --error-trace
-      - name: Build preview executable
-        run: shards build --error-trace
+      - name: Install SQLite development files
+        if: runner.os == 'Linux'
+        run: sudo apt-get update && sudo apt-get install -y libsqlite3-dev
+      - name: Run Crystal deterministic gate
+        run: python devscripts/crystal_test_gate.py --release --differential --report artifacts/crystal-test-gate.json
       - name: Verify generated baseline
         run: |
           python devscripts/export_crystal_baseline.py
           git diff --exit-code -- baseline/crystal
-      - name: Run differential smoke test
-        run: python devscripts/differential_crystal.py

@@ -86,6 +86,7 @@ describe CrDlp::AES do
     encrypted = "0388dace60b6a392f328c2b971b2fe78".hexbytes
     tag = "ab6e47d42cec13bdf53a67b21257bddf".hexbytes
     CrDlp::AES.aes_gcm_decrypt_and_verify(encrypted, zero_key, tag, zero_nonce).should eq(Bytes.new(16, 0_u8))
+    CrDlp::AES.aes_gcm_encrypt_and_tag(Bytes.new(16, 0_u8), zero_key, zero_nonce).should eq({encrypted, tag})
   end
 
   it "handles non-standard GCM nonce and tag lengths" do

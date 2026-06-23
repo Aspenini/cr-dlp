@@ -103,6 +103,22 @@ describe CrDlp::ArgumentParser do
       .should eq(["title", "%(height)04d"])
   end
 
+  it "parses print-to-file as staged template/path pairs" do
+    parsed = CrDlp::ArgumentParser.new.parse([
+      "--print-to-file", "title", "titles.txt",
+      "--print-to-file", "playlist:%(playlist_id)s", "playlists.txt",
+      "https://example.test/video.mp4",
+    ])
+
+    output = parsed.hash?("print_to_file").not_nil!
+    video = output["video"].as_a.first.as_h
+    video["template"].as_s.should eq("title")
+    video["path"].as_s.should eq("titles.txt")
+    playlist = output["playlist"].as_a.first.as_h
+    playlist["template"].as_s.should eq("%(playlist_id)s")
+    playlist["path"].as_s.should eq("playlists.txt")
+  end
+
   it "preserves repeated exec commands by stage and parses media conversion options" do
     parsed = CrDlp::ArgumentParser.new.parse([
       "--exec", "echo one",

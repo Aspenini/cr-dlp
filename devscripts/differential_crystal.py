@@ -8,6 +8,7 @@ import json
 import os
 import socketserver
 import subprocess
+import sys
 import tempfile
 import threading
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
@@ -15,6 +16,7 @@ from pathlib import Path
 
 
 ROOT = Path(__file__).resolve().parents[1]
+sys.path.insert(0, str(ROOT))
 
 
 class FixtureHandler(BaseHTTPRequestHandler):
@@ -446,6 +448,9 @@ def compare_output_templates(binary, temporary, url):
         (['--output-na-placeholder', 'none', '-o', '%(missing)s-%(height)s.%(ext)s'], None),
         (['--trim-filenames', '8', '-o', '%(height)s-long-name.%(ext)s'], None),
         (['-o', '%(formats.0.height)04d-%(formats.-1.width)d.%(ext)s'], None),
+        (['-o', '%(title)h.%(ext)s'], None),
+        (['-o', '%(title)U.%(ext)s'], None),
+        (['-o', '%(filesize)010B.%(ext)s'], None),
     )
     for arguments, _ in cases:
         common = [
@@ -537,6 +542,70 @@ def compare_metadata_parser(binary, temporary, url):
                 f'metadata parser mismatch for {arguments!r}: {differences}')
         compared += len(fields)
     return len(cases), compared
+
+
+def create_firefox_cookie_profile(directory):
+    import sqlite3
+
+    database = directory / 'cookies.sqlite'
+    connection = sqlite3.connect(database)
+    connection.execute(
+        'CREATE TABLE moz_cookies ('
+        'id INTEGER PRIMARY KEY, originAttributes TEXT, host TEXT, name TEXT, '
+        'value TEXT, path TEXT, expiry INTEGER, lastAccessed INTEGER, '
+        'creationTime INTEGER, isSecure INTEGER, isHttpOnly INTEGER)')
+    connection.execute(
+        "INSERT INTO moz_cookies VALUES ("
+        "1, '', '127.0.0.1', 'session', 'fixture', '/', 0, 0, 0, 0, 0)")
+    connection.commit()
+    connection.close()
+    return directory
+
+
+def compare_cookies_from_browser(binary, temporary, url):
+    directory = Path(temporary) / 'browser-cookies'
+    directory.mkdir()
+    profile = create_firefox_cookie_profile(directory)
+    profile_spec = f'firefox:{profile.resolve().as_posix()}'
+
+    from yt_dlp.cookies import extract_cookies_from_browser
+
+    python_jar = extract_cookies_from_browser('firefox', profile.resolve().as_posix())
+    python_header = None
+    for cookie in python_jar:
+        if cookie.name == 'session':
+            python_header = f'{cookie.name}={cookie.value}'
+            break
+    if python_header is None:
+        raise SystemExit('python cookies-from-browser fixture extraction failed')
+
+    crystal = run([
+        str(binary),
+        '--ignore-config',
+        '--cookies-from-browser', profile_spec,
+        '--__cookie-header-for', url,
+    ], directory)
+    if crystal.returncode != 0:
+        raise SystemExit(
+            f'crystal cookies-from-browser header failed:\n{crystal.stderr}')
+    if crystal.stdout.strip() != python_header:
+        raise SystemExit(
+            'cookies-from-browser header mismatch: '
+            f'python={python_header!r}, crystal={crystal.stdout.strip()!r}')
+
+    download = run([
+        str(binary),
+        '--ignore-config', '--fixup', 'never',
+        '--cookies-from-browser', profile_spec,
+        '-o', 'fixture.%(ext)s', url,
+    ], directory)
+    if download.returncode != 0:
+        raise SystemExit(
+            f'crystal cookies-from-browser download failed:\n{download.stderr}')
+    output = directory / 'fixture.mp4'
+    if output.read_bytes() != FixtureHandler.cookie_payload:
+        raise SystemExit('crystal cookies-from-browser download bytes differ')
+    return len(FixtureHandler.cookie_payload)
 
 
 def compare_cookie_file(binary, temporary, url):
@@ -691,6 +760,8 @@ def main():
                 args.crystal_binary, temporary, f'{base_url}/fixture.mp4')
             cookie_bytes = compare_cookie_file(
                 args.crystal_binary, temporary, f'{base_url}/cookie.mp4')
+            browser_cookie_bytes = compare_cookies_from_browser(
+                args.crystal_binary, temporary, f'{base_url}/cookie.mp4')
             proxy_bytes = compare_http_proxy(
                 args.crystal_binary, temporary, proxy_url)
             socks_bytes = compare_socks_proxy(
@@ -706,7 +777,8 @@ def main():
                 f'interactive selection ({interactive_fields} fields), '
                 f'{template_cases} output templates, {print_cases} print templates, '
                 f'{metadata_cases} metadata parser cases ({metadata_fields} fields), '
-                f'{cookie_bytes} authenticated cookie bytes, and '
+                f'{cookie_bytes} authenticated cookie bytes, '
+                f'{browser_cookie_bytes} browser-cookie bytes, and '
                 f'{proxy_bytes} HTTP-proxied bytes plus '
                 f'{socks_bytes} SOCKS-proxied bytes plus '
                 f'{subtitle_bytes} subtitle bytes match'
